@@ -1,0 +1,41 @@
+name: Deploy to SAP BTP (Cloud Foundry)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish .NET app (self-contained Linux x64)
+        run: |
+          dotnet publish ./SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained true
+          ls -R bin/Release/net8.0/linux-x64/publish
+
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          tar -xzf cf-cli.tgz
+          sudo mv cf /usr/local/bin/
+          cf --version
+
+      - name: Login to Cloud Foundry
+        run: |
+          cf api ${{ secrets.CF_API }}
+          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
+          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+
+      - name: Deploy with manifest.yml
+        run: |
+          cf push -f manifest.yml
