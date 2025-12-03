@@ -1,38 +1,40 @@
-name: Deploy to SAP BTP
+name: Deploy SfOnBaseBridge to BTP CF
 
 on:
-  workflow_dispatch:   # <-- Manual trigger
+  workflow_dispatch:  # allows manual trigger
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install .NET SDK
+      - name: Set up .NET
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
       - name: Install Cloud Foundry CLI
-        run: |
-          wget -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-          tar -xzf cf-cli.tgz
-          sudo mv cf /usr/local/bin/cf
-          cf --version
+        uses: cloudfoundry/cf-cli-action@v2
+        with:
+          version: latest
 
-      - name: Login to SAP BTP Cloud Foundry
+      - name: Log in to Cloud Foundry
+        env:
+          CF_API: ${{ secrets.CF_API }}
+          CF_USERNAME: ${{ secrets.CF_USERNAME }}
+          CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+          CF_ORG: ${{ secrets.CF_ORG }}
+          CF_SPACE: ${{ secrets.CF_SPACE }}
         run: |
-          cf api ${{ secrets.CF_API }}
-          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
-          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf api $CF_API --skip-ssl-validation
+          cf auth $CF_USERNAME $CF_PASSWORD
+          cf target -o $CF_ORG -s $CF_SPACE
 
-      - name: Publish .NET 8 (Linux-x64 Self-contained)
-        run: |
-          dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained true
+      - name: Publish .NET app
+        run: dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained false -o bin/Release/net8.0/linux-x64/publish
 
-      - name: Deploy using manifest
-        run: |
-          cf push -f SfOnBaseBridge/manifest.yml
+      - name: Deploy to Cloud Foundry
+        run: cf push -f manifest.yml
