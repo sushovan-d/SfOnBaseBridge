@@ -1,6 +1,5 @@
 name: Deploy SfOnBaseBridge to BTP CF
 
-# Allows manual trigger from GitHub UI
 on:
   workflow_dispatch:
 
@@ -9,38 +8,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Set up .NET 8
-      - name: Set up .NET
+      - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      # 3️⃣ Install Cloud Foundry CLI (fixed)
-      - name: Install Cloud Foundry CLI
+      - name: Install Cloud Foundry CLI (robust)
         run: |
-          echo "Downloading CF CLI..."
           wget -qO cf.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-          
-          echo "Listing tar contents for debug:"
-          tar -tzf cf.tgz
-          
-          echo "Extracting CF CLI..."
           tar -xzf cf.tgz
-          
-          # The tarball creates a folder like cf-cli-<version>/cf
-          # Move the binary to /usr/local/bin
-          sudo mv cf-cli-*/cf /usr/local/bin/
+
+          # Find the extracted binary (cf, cf7, or cf8)
+          BIN=$(find . -maxdepth 2 -type f -executable -name 'cf*' | head -n 1)
+          if [ -z "$BIN" ]; then
+            echo "ERROR: cf CLI binary not found in extracted files"
+            ls -R .  # debug listing
+            exit 1
+          fi
+
+          echo "Found binary: $BIN"
+          sudo mv "$BIN" /usr/local/bin/cf
           sudo chmod +x /usr/local/bin/cf
-          
-          echo "CF CLI version check:"
           cf --version
 
-      # 4️⃣ Log in to Cloud Foundry
-      - name: Log in to Cloud Foundry
+      - name: Login to Cloud Foundry
         env:
           CF_API: ${{ secrets.CF_API }}
           CF_USERNAME: ${{ secrets.CF_USERNAME }}
@@ -52,8 +46,7 @@ jobs:
           cf auth "$CF_USERNAME" "$CF_PASSWORD"
           cf target -o "$CF_ORG" -s "$CF_SPACE"
 
-      # 5️⃣ Publish .NET 8 application
-      - name: Publish .NET app
+      - name: Publish .NET application
         run: |
           dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj \
             -c Release \
@@ -61,6 +54,5 @@ jobs:
             --self-contained false \
             -o bin/Release/net8.0/linux-x64/publish
 
-      # 6️⃣ Deploy to Cloud Foundry
       - name: Deploy to Cloud Foundry
         run: cf push -f manifest.yml
