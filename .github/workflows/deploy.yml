@@ -53,6 +53,8 @@ jobs:
             -r linux-x64 \
             --self-contained true \
             -o bin/Release/net8.0/linux-x64/publish
+            
+          chmod +x bin/Release/net8.0/linux-x64/publish/SfOnBaseBridge
 
       - name: Deploy to Cloud Foundry
         run: cf push -f manifest.yml
