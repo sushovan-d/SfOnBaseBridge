@@ -19,7 +19,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # 3️⃣ Install Cloud Foundry CLI correctly
+      # 3️⃣ Install Cloud Foundry CLI (fixed)
       - name: Install Cloud Foundry CLI
         run: |
           echo "Downloading CF CLI..."
@@ -27,13 +27,14 @@ jobs:
           
           echo "Listing tar contents for debug:"
           tar -tzf cf.tgz
-    
+          
           echo "Extracting CF CLI..."
           tar -xzf cf.tgz
           
-          # The tarball now contains a single binary 'cf', no folder
-          chmod +x cf
-          sudo mv cf /usr/local/bin/
+          # The tarball creates a folder like cf-cli-<version>/cf
+          # Move the binary to /usr/local/bin
+          sudo mv cf-cli-*/cf /usr/local/bin/
+          sudo chmod +x /usr/local/bin/cf
           
           echo "CF CLI version check:"
           cf --version
