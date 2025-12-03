@@ -1,41 +1,84 @@
-name: Deploy to SAP BTP (Cloud Foundry)
+
+name: Deploy SfOnBaseBridge to BTP CF
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      - name: Publish .NET app (self-contained Linux x64)
+      - name: Install Cloud Foundry CLI (robust)
         run: |
-          dotnet publish ./SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained true
-          ls -R bin/Release/net8.0/linux-x64/publish
+          wget -qO cf.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          tar -xzf cf.tgz
 
-      - name: Install Cloud Foundry CLI
-        run: |
-          wget -q -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-          tar -xzf cf-cli.tgz
-          sudo mv cf /usr/local/bin/
+          # Find the extracted binary (cf, cf7, or cf8)
+          BIN=$(find . -maxdepth 2 -type f -executable -name 'cf*' | head -n 1)
+          if [ -z "$BIN" ]; then
+            echo "ERROR: cf CLI binary not found in extracted files"
+            ls -R .  # debug listing
+            exit 1
+          fi
+
+          echo "Found binary: $BIN"
+          sudo mv "$BIN" /usr/local/bin/cf
+          sudo chmod +x /usr/local/bin/cf
           cf --version
 
       - name: Login to Cloud Foundry
+        env:
+          CF_API: ${{ secrets.CF_API }}
+          CF_USERNAME: ${{ secrets.CF_USERNAME }}
+          CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+          CF_ORG: ${{ secrets.CF_ORG }}
+          CF_SPACE: ${{ secrets.CF_SPACE }}
         run: |
-          cf api ${{ secrets.CF_API }}
-          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
-          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf api "$CF_API" --skip-ssl-validation
+          cf auth "$CF_USERNAME" "$CF_PASSWORD"
+          cf target -o "$CF_ORG" -s "$CF_SPACE"
 
-      - name: Deploy with manifest.yml
+      - name: Publish .NET application
         run: |
+          dotnet publish SfOnBaseBridge.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -o bin/Release/net8.0/linux-x64/publish
+
+      - name: Deploy to Cloud Foundry
+        id: deploy
+        continue-on-error: true
+        run: |
+          echo "Pushing app to Cloud Foundry..."
           cf push -f manifest.yml
+
+    # ------------------------------------------------------------
+      # ALWAYS extract logs after deployment (success or failure)
+      # ------------------------------------------------------------
+      - name: Fetch CF Logs (always run)
+        if: always()
+        run: |
+          echo "======================================================="
+          echo "📄 Fetching recent logs for troubleshooting..."
+          echo "======================================================="
+
+          cf logs sfonbasebridge --recent || echo "⚠️ Could not fetch logs"
+
+      # ------------------------------------------------------------
+      # Fail job if deployment failed
+      # ------------------------------------------------------------
+      - name: Fail if deployment failed
+        if: steps.deploy.outcome == 'failure'
+        run: exit 1
