@@ -1,26 +1,45 @@
 name: Deploy SfOnBaseBridge to BTP CF
 
+# Allows manual trigger from GitHub UI
 on:
-  workflow_dispatch:  # allows manual trigger
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # 2️⃣ Set up .NET 8
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
+      # 3️⃣ Install Cloud Foundry CLI correctly
       - name: Install Cloud Foundry CLI
-        uses: cloudfoundry/cf-cli-action@v2
-        with:
-          version: latest
+        run: |
+          echo "Downloading CF CLI..."
+          wget -qO cf.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          
+          echo "Listing tar contents for debug:"
+          tar -tzf cf.tgz
+          
+          echo "Extracting CF CLI..."
+          tar -xzf cf.tgz
+          
+          # Move into folder containing the binary
+          cd cf
+          chmod +x cf
+          sudo mv cf /usr/local/bin/
+          
+          echo "CF CLI version check:"
+          cf --version
 
+      # 4️⃣ Log in to Cloud Foundry
       - name: Log in to Cloud Foundry
         env:
           CF_API: ${{ secrets.CF_API }}
@@ -29,12 +48,19 @@ jobs:
           CF_ORG: ${{ secrets.CF_ORG }}
           CF_SPACE: ${{ secrets.CF_SPACE }}
         run: |
-          cf api $CF_API --skip-ssl-validation
-          cf auth $CF_USERNAME $CF_PASSWORD
-          cf target -o $CF_ORG -s $CF_SPACE
+          cf api "$CF_API" --skip-ssl-validation
+          cf auth "$CF_USERNAME" "$CF_PASSWORD"
+          cf target -o "$CF_ORG" -s "$CF_SPACE"
 
+      # 5️⃣ Publish .NET 8 application
       - name: Publish .NET app
-        run: dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained false -o bin/Release/net8.0/linux-x64/publish
+        run: |
+          dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o bin/Release/net8.0/linux-x64/publish
 
+      # 6️⃣ Deploy to Cloud Foundry
       - name: Deploy to Cloud Foundry
         run: cf push -f manifest.yml
