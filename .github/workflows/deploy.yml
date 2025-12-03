@@ -54,7 +54,10 @@ jobs:
             --self-contained true \
             -o bin/Release/net8.0/linux-x64/publish
             
-          chmod +x bin/Release/net8.0/linux-x64/publish/SfOnBaseBridge
-
+          chmod +x bin/Release/net8.0/linux-x64/publish/SfOnBaseBridge       
+        
+          echo "Listing published files:"
+          ls -la bin/Release/net8.0/linux-x64/publish
+  
       - name: Deploy to Cloud Foundry
         run: cf push -f manifest.yml
