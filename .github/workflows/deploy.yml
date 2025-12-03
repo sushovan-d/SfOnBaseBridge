@@ -1,44 +1,44 @@
 name: Manual Deploy to SAP BTP CF
 
 on:
-  workflow_dispatch:   # <-- allows manual run
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repo
-      - name: Checkout
-        uses: actions/checkout@v3
+      # 1. Checkout repo
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      # Step 2: Setup .NET 8
+      # 2. Setup .NET 8
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      # Step 3: Publish self-contained Linux-x64 build
-      - name: Publish .NET App
-        run: |
-          dotnet publish -c Release -r linux-x64 --self-contained true /p:PublishSingleFile=true
-
-      # Step 4: Install Cloud Foundry CLI
+      # 3. Install Cloud Foundry CLI
       - name: Install CF CLI
         run: |
-          wget -q -O cfcli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-          tar -xzf cfcli.tgz
-          sudo mv cf /usr/local/bin/
+          wget -q -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          tar -xzf cf-cli.tgz
+          sudo mv cf /usr/local/bin/cf
           cf --version
 
-      # Step 5: Login to Cloud Foundry
+      # 4. Publish .NET self-contained build
+      - name: Publish .NET App
+        run: |
+          dotnet publish -c Release -r linux-x64 --self-contained true
+
+      # 5. CF Login
       - name: CF Login
         run: |
-          cf api ${{ secrets.CF_API }} --skip-ssl-validation
-          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
-          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
+          cf api "${{ secrets.CF_API }}"
+          cf auth "${{ secrets.CF_USERNAME }}" "${{ secrets.CF_PASSWORD }}"
+          cf target -o "${{ secrets.CF_ORG }}" -s "${{ secrets.CF_SPACE }}"
 
-      # Step 6: Deploy using manifest.yml
-      - name: Deploy App
+      # 6. Deploy app using manifest.yml
+      - name: Deploy to BTP CF
         run: |
           cf push -f manifest.yml
