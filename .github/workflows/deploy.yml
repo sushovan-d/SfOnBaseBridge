@@ -1,44 +1,38 @@
-name: Manual Deploy to SAP BTP CF
+name: Deploy to SAP BTP
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # <-- Manual trigger
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      # 2. Setup .NET 8
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      # 3. Install Cloud Foundry CLI
-      - name: Install CF CLI
+      - name: Install Cloud Foundry CLI
         run: |
-          wget -q -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          wget -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
           tar -xzf cf-cli.tgz
           sudo mv cf /usr/local/bin/cf
           cf --version
 
-      # 4. Publish .NET self-contained build
-      - name: Publish .NET App
+      - name: Login to SAP BTP Cloud Foundry
         run: |
-          dotnet publish -c Release -r linux-x64 --self-contained true
+          cf api ${{ secrets.CF_API }}
+          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
+          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE }}
 
-      # 5. CF Login
-      - name: CF Login
+      - name: Publish .NET 8 (Linux-x64 Self-contained)
         run: |
-          cf api "${{ secrets.CF_API }}"
-          cf auth "${{ secrets.CF_USERNAME }}" "${{ secrets.CF_PASSWORD }}"
-          cf target -o "${{ secrets.CF_ORG }}" -s "${{ secrets.CF_SPACE }}"
+          dotnet publish SfOnBaseBridge/SfOnBaseBridge.csproj -c Release -r linux-x64 --self-contained true
 
-      # 6. Deploy app using manifest.yml
-      - name: Deploy to BTP CF
+      - name: Deploy using manifest
         run: |
-          cf push -f manifest.yml
+          cf push -f SfOnBaseBridge/manifest.yml
