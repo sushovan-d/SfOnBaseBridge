@@ -85,6 +85,6 @@ public class OnBaseController : ControllerBase
                                 .GetProperty("access_token")
                                 .GetString();
 
-        return token;
+        return token!;
     }
 }
