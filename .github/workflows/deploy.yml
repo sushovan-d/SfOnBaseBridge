@@ -1,0 +1,46 @@
+name: Deploy to SAP BTP Cloud Foundry
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish .NET API
+        run: |
+          dotnet publish -c Release -o publish
+
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          tar -xzf cf-cli.tgz
+          sudo mv cf /usr/local/bin/
+          cf --version
+
+      - name: Login to SAP BTP CF
+        env:
+          CF_API: ${{ secrets.CF_API }}
+          CF_USERNAME: ${{ secrets.CF_USERNAME }}
+          CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+          CF_ORG: ${{ secrets.CF_ORG }}
+          CF_SPACE: ${{ secrets.CF_SPACE }}
+        run: |
+          cf api $CF_API
+          cf auth $CF_USERNAME $CF_PASSWORD
+          cf target -o $CF_ORG -s $CF_SPACE
+
+      - name: Deploy to Cloud Foundry
+        run: |
+          cf push -f manifest.yml -p publish/
