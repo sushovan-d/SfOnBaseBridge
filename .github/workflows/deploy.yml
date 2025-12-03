@@ -64,14 +64,21 @@ jobs:
           echo "Pushing app to Cloud Foundry..."
           cf push -f manifest.yml
 
-    # -------------------------------
-    # Fetch CF Logs on Failure
-    # -------------------------------
-      - name: Fetch logs if deployment failed
-        if: steps.deploy.outcome == 'failure'
+    # ------------------------------------------------------------
+      # ALWAYS extract logs after deployment (success or failure)
+      # ------------------------------------------------------------
+      - name: Fetch CF Logs (always run)
+        if: always()
         run: |
-          echo "Deployment failed. Fetching logs..."
-          cf logs sfonbasebridge --recent || echo "Could not fetch logs"
-  
-          echo "Failing workflow because deployment failed."
-          exit 1
+          echo "======================================================="
+          echo "📄 Fetching recent logs for troubleshooting..."
+          echo "======================================================="
+
+          cf logs sfonbasebridge --recent || echo "⚠️ Could not fetch logs"
+
+      # ------------------------------------------------------------
+      # Fail job if deployment failed
+      # ------------------------------------------------------------
+      - name: Fail if deployment failed
+        if: steps.deploy.outcome == 'failure'
+        run: exit 1
