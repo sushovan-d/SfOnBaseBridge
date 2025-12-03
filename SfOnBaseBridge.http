@@ -1,0 +1,6 @@
+@SfOnBaseBridge_HostAddress = http://localhost:5186
+
+GET {{SfOnBaseBridge_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

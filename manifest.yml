@@ -1,0 +1,10 @@
+applications:
+- name: sfonbasebridge
+  buildpacks:
+    - binary_buildpack
+  command: ./SfOnBaseBridge
+  path: bin/Release/net8.0/linux-x64/publish
+  memory: 512M
+  disk_quota: 1G
+  env:
+    ASPNETCORE_URLS: http://0.0.0.0:${PORT}
