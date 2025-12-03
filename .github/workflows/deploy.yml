@@ -1,90 +1,86 @@
-name: Deploy to SAP BTP Cloud Foundry
+name: Deploy to SAP BTP CF
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # ---------------------------
-    # Checkout source code
-    # ---------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - name: Checkout Repo
+      uses: actions/checkout@v3
 
-    # ---------------------------
-    # Setup .NET 8
-    # ---------------------------
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-
-    # ---------------------------
-    # Publish self-contained Linux build
-    # ---------------------------
-    - name: Publish .NET app
-      run: |
-        dotnet publish SfOnBaseBridge.csproj \
-          -c Release \
-          -r linux-x64 \
-          --self-contained true \
-          -o SfOnBaseBridge/bin/Release/net8.0/linux-x64/publish
-
-        chmod +x SfOnBaseBridge/bin/Release/net8.0/linux-x64/publish/SfOnBaseBridge
-
-    # ---------------------------
-    # Debug — list published output
-    # ---------------------------
-    - name: List build output
-      run: |
-        echo "Published files:"
-        ls -la SfOnBaseBridge/bin/Release/net8.0/linux-x64/publish
-
-    # ---------------------------
-    # Install CF CLI manually
-    # ---------------------------
+    # -------------------------------------------------------
+    # Install CF CLI (Correctly)
+    # -------------------------------------------------------
     - name: Install Cloud Foundry CLI
       run: |
-        wget -O cf-cli.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-        mkdir cf-install
-        tar -xzf cf-cli.tgz -C cf-install
-        sudo mv cf-install/cf /usr/local/bin/cf
+        echo "Downloading CF CLI..."
+        wget -q "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github" -O cf-cli.tgz
+
+        echo "Extracting..."
+        mkdir cf-cli
+        tar -xzf cf-cli.tgz -C cf-cli
+
+        echo "Adding to PATH..."
+        sudo mv cf-cli/cf /usr/local/bin/cf
+        sudo chmod +x /usr/local/bin/cf
+
+        echo "CF CLI version:"
         cf --version
 
-    # ---------------------------
-    # Login to BTP CF
-    # ---------------------------
-    - name: CF Login
+    # -------------------------------------------------------
+    # Login to CF
+    # -------------------------------------------------------
+    - name: Login to Cloud Foundry
       env:
         CF_API: ${{ secrets.CF_API }}
-        CF_USER: ${{ secrets.CF_USER }}
+        CF_USERNAME: ${{ secrets.CF_USERNAME }}
         CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
         CF_ORG: ${{ secrets.CF_ORG }}
         CF_SPACE: ${{ secrets.CF_SPACE }}
       run: |
         cf api "$CF_API" --skip-ssl-validation
-        cf auth "$CF_USER" "$CF_PASSWORD"
+        cf auth "$CF_USERNAME" "$CF_PASSWORD"
         cf target -o "$CF_ORG" -s "$CF_SPACE"
 
-    # ---------------------------
-    # Deploy to Cloud Foundry
-    # ---------------------------
-    - name: CF Push
-      run: |
-        cf push -f manifest.yml || echo "DEPLOYMENT_FAILED" > deploy_status.txt
+    # -------------------------------------------------------
+    # Build .NET App
+    # -------------------------------------------------------
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 8.0.x
 
-    # ---------------------------
-    # Fetch CF logs on crash
-    # ---------------------------
-    - name: Fetch crash logs
-      if: always()
+    - name: Publish .NET App (self-contained)
       run: |
-        if [ -f deploy_status.txt ]; then
-          echo "Deployment failed — fetching recent logs..."
-          cf logs sfonbasebridge --recent
-        else
-          echo "Deployment succeeded."
-        fi
+        dotnet publish SfOnBaseBridge.csproj \
+          -c Release \
+          -r linux-x64 \
+          --self-contained true \
+          -o bin/Release/net8.0/linux-x64/publish
+
+        chmod +x bin/Release/net8.0/linux-x64/publish/SfOnBaseBridge
+
+    - name: List Published Output
+      run: ls -la bin/Release/net8.0/linux-x64/publish
+
+    # -------------------------------------------------------
+    # Deploy
+    # -------------------------------------------------------
+    - name: Deploy to Cloud Foundry
+      run: |
+        echo "Pushing to CF..."
+        cf push -f manifest.yml --no-start
+        echo "Starting app with logs..."
+        cf start sfonbasebridge || true
+
+    # -------------------------------------------------------
+    # Fetch logs if crashed
+    # -------------------------------------------------------
+    - name: Fetch CF Logs
+      if: failure()
+      run: |
+        echo "=== Recent Logs ==="
+        cf logs sfonbasebridge --recent
