@@ -1,3 +1,4 @@
+
 name: Deploy SfOnBaseBridge to BTP CF
 
 on:
@@ -8,39 +9,67 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # -------------------------------
-    # Checkout Code
-    # -------------------------------
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Cloud Foundry CLI (robust)
+        run: |
+          wget -qO cf.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
+          tar -xzf cf.tgz
+
+          # Find the extracted binary (cf, cf7, or cf8)
+          BIN=$(find . -maxdepth 2 -type f -executable -name 'cf*' | head -n 1)
+          if [ -z "$BIN" ]; then
+            echo "ERROR: cf CLI binary not found in extracted files"
+            ls -R .  # debug listing
+            exit 1
+          fi
+
+          echo "Found binary: $BIN"
+          sudo mv "$BIN" /usr/local/bin/cf
+          sudo chmod +x /usr/local/bin/cf
+          cf --version
+
+      - name: Login to Cloud Foundry
+        env:
+          CF_API: ${{ secrets.CF_API }}
+          CF_USERNAME: ${{ secrets.CF_USERNAME }}
+          CF_PASSWORD: ${{ secrets.CF_PASSWORD }}
+          CF_ORG: ${{ secrets.CF_ORG }}
+          CF_SPACE: ${{ secrets.CF_SPACE }}
+        run: |
+          cf api "$CF_API" --skip-ssl-validation
+          cf auth "$CF_USERNAME" "$CF_PASSWORD"
+          cf target -o "$CF_ORG" -s "$CF_SPACE"
+
+      - name: Publish .NET application
+        run: |
+          dotnet publish SfOnBaseBridge.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o bin/Release/net8.0/linux-x64/publish
+
+      - name: Deploy to Cloud Foundry
+        id: deploy
+        continue-on-error: true
+        run: |
+          echo "Pushing app to Cloud Foundry..."
+          cf push -f manifest.yml
 
     # -------------------------------
-    # Setup .NET
+    # Fetch CF Logs on Failure
     # -------------------------------
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: "8.0.x"
-
-    # -------------------------------
-    # Install Cloud Foundry CLI
-    # -------------------------------
-    - name: Install Cloud Foundry CLI (robust)
-      run: |
-        echo "Downloading CF CLI..."
-        wget -qO cf.tgz "https://packages.cloudfoundry.org/stable?release=linux64-binary&source=github"
-
-        echo "Extracting CF CLI..."
-        tar -xzf cf.tgz
-
-        echo "Searching for CF binary..."
-        BIN=$(find . -maxdepth 3 -type f -name 'cf' -o -name 'cf8' -o -name 'cf7' | head -n 1)
-
-        if [ -z "$BIN" ]; then
-          echo "ERROR: CF CLI binary not found!"
-          echo "Directory listing for debugging:"
-          ls -R .
+      - name: Fetch logs if deployment failed
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          echo "Deployment failed. Fetching logs..."
+          cf logs sfonbasebridge --recent || echo "Could not fetch logs"
+  
+          echo "Failing workflow because deployment failed."
           exit 1
-        fi
-
-        ec
