@@ -27,12 +27,11 @@ jobs:
           
           echo "Listing tar contents for debug:"
           tar -tzf cf.tgz
-          
+    
           echo "Extracting CF CLI..."
           tar -xzf cf.tgz
           
-          # Move into folder containing the binary
-          cd cf
+          # The tarball now contains a single binary 'cf', no folder
           chmod +x cf
           sudo mv cf /usr/local/bin/
           
